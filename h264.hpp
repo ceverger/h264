@@ -168,6 +168,7 @@
  
 				int getBufLen()  const { return m_cur - m_pos; }
 				int getBufSize() const { return m_end - m_pos; }
+				int getBufFree() const { return m_end - m_cur; }
 				int getMode()    const { return mode;          }
 
 			// Модификаторы класса
@@ -199,12 +200,17 @@
 
 			// Констуркторы  и деструкторы класса
 
-				H264Packer();
-				virtual ~H264Packer() {}
+				H264Unpacker();
+				virtual ~H264Unpacker() {}
 			
 			// Селекторы класса
 			
+				uint8_t *getPos() const { return m_pos; }
+				uint8_t *getEnd() const { return m_end; }
 				
+				int getBufLen() const { return m_cur - m_pos; }
+				int getBufSize() const { return m_end - m_pos; }
+				int getBufFree() const { return m_end - m_cur; }				
 
 			// Модификаторы класса
 

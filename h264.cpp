@@ -35,7 +35,7 @@
 		return header >> 7;	
 	}
 
-	uint8_t H264GetReferenceIdc(uint8_t header)
+	uint8_t H264GetReferenceIDC(uint8_t header)
 	{
 		return (header >> 5) & 0x03;
 	}
@@ -273,7 +273,7 @@
 			return -1;
 		}
 		
-		bufsize = (int) file_info.st_size + 1;	
+		bufsize = (int) file_info.st_size;	
 		buf_pos = (uint8_t *) calloc(bufsize, sizeof(uint8_t));
 
 		if(buf_pos == nullptr)
@@ -441,6 +441,7 @@
 					if(au_cur == au_pos)
 					{
 						*(m_cur - 1) = H264SetFuaStartBit(1, *(m_cur - 1));
+						 au_cur++;
 					}
 
 					while(m_cur != m_end && au_cur != au_end) 
@@ -475,6 +476,18 @@
 					au.parseNalUnit(nu);
 					au_pos = nu.getPos();
 					au_cur = au_pos;
+
+					// Обработка случая, когда nal unit является
+					// концом потока
+
+					if(nu.getPayloadType() == 10)
+					{
+						while(au_cur != au_end) *m_cur++ = *au_cur++;
+						mode = UnknowMode;
+						len = getBufLen();
+						m_cur = m_pos;
+						return len;						
+					}
 
 					// Обработка случая, когда размер nal unit
 					// либо больше размера самого буфера, либо
@@ -554,6 +567,133 @@
 		m_pos = nullptr;
 		m_cur = nullptr;
 		m_end = nullptr;		
+	}
+
+	void H264Unpacker::setPos(uint8_t *pos)
+	{
+		if(m_cur != nullptr) return;
+		m_pos = pos;
+	}
+
+	void H264Unpacker::setEnd(uint8_t *end)
+	{
+		if(m_cur != nullptr) return;
+		m_end = end;		
+	}
+
+	void H264Unpacker::setBuf(uint8_t *buf, int bufsize)
+	{
+		if(m_cur != nullptr) return;
+
+		m_pos = buf;
+		m_end = buf + bufsize;
+	}
+
+	int H264Unpacker::unpack(uint8_t *buf, int bufsize)
+	{
+		if(m_pos == nullptr || m_end == nullptr || m_cur == nullptr) return -1;
+		if(m_cur == m_end) return 0;
+
+		int len;
+		uint32_t payloadSize;
+		uint8_t naluHeader = 0, payloadType;
+		uint8_t *pos, *cur, *end, *temp, *last;
+
+		pos = buf;
+		cur = pos;
+		end = pos + bufsize;
+		last = m_cur;
+
+		if(H264GetPayloadType(*cur) == 24)
+		{
+			cur++;
+			while(cur < end)
+			{
+				payloadSize = 0;
+				payloadSize = (payloadSize | *cur) << 8;
+				cur++;
+				payloadSize |= *cur;
+				cur++;
+
+				payloadType = H264GetPayloadType(*cur);
+				if(payloadType == 9 || payloadType == 8 || payloadType == 7)
+				{
+					if(getBufFree() < 4) return -1;
+
+					*m_cur++ = 0;
+					*m_cur++ = 0;
+					*m_cur++ = 0;
+					*m_cur++ = 1;
+				}
+				else
+				{
+					if(getBufFree() < 3) return -1;
+
+					*m_cur++ = 0;
+					*m_cur++ = 0;
+					*m_cur++ = 1;				
+				}
+
+				temp = cur + payloadSize;
+
+				if(getBufFree() < temp - cur) return -1;
+
+				while(cur < temp) *m_cur++ = *cur++;
+			}
+
+			return m_cur - last;
+		}
+
+		if(H264GetPayloadType(*cur) == 28)
+		{
+			if(getBufFree() < bufsize) return -1;
+			
+			naluHeader = H264SetForbiddenBit(H264GetForbiddenBit(*cur), naluHeader);
+			naluHeader = H264SetReferenceIDC(H264GetReferenceIDC(*cur), naluHeader);
+
+			cur++;
+
+			if(H264GetFuaStartBit(*cur))
+			{
+				if(getBufFree() < 3) return -1;
+
+				naluHeader = H264SetPayloadType(H264GetPayloadType(*cur), naluHeader);
+
+				*m_cur++ = 0;
+				*m_cur++ = 0;
+				*m_cur++ = 1;
+				*m_cur++ = naluHeader;
+			}
+
+			cur++;
+	
+			while(cur < end) *m_cur++ = *cur++;
+
+			return m_cur - last;
+		}
+
+		if(getBufFree() < 3) return -1;
+
+		*m_cur++ = 0;
+		*m_cur++ = 0;
+		*m_cur++ = 1;
+
+		if(getBufFree() < bufsize) return -1;
+
+		while(cur < end) *m_cur++ = *cur++;
+
+		return m_cur - last;
+	}
+
+	void 	H264Unpacker::init()
+	{
+		if(m_cur != nullptr) return;
+		m_cur = m_pos;
+	}
+
+	void H264Unpacker::reset()
+	{
+		m_cur = m_pos;
 	}
 
 	void H264Unpacker::clear()
