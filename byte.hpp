@@ -50,7 +50,8 @@
 
 			/* Чекеры класса */
 	
-				virtual bool isInit() const;					
+				virtual bool isInit() const;
+				virtual bool isReset() const;				
 
 		}; // class Array
 

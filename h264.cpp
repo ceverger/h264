@@ -375,7 +375,7 @@
 			m_end = end;
 		}
 
-		int NalUnit::payload(char *buf, int bufsize)
+		int NalUnit::payload(char *buf, int len)
 		{
 			/* Метод записывает полезную нагрузку nal unit
 				в buf и возвращает количетво записанных байт */
@@ -384,7 +384,7 @@
 
 				int i = 0;
 				
-				while(i < bufsize && cur < m_end)
+				while(i < len && cur < m_end)
 				{
 					*buf++ = *cur++;
 					 i++;
@@ -404,7 +404,6 @@
 
 				if(isInit()) return;
 				if(startcode3(m_pos) == false && startcode4(m_pos) == false) return;
-
 
 			/* Начало выполнения основного блока метода */
 			
@@ -441,40 +440,194 @@
 				return true;
 		}
 
+		Packer::Packer() : Byte::Buffer()
+		{
+			/* Реализация конструктор класса по умолчанию */
+
+				mode = UnknowMode;
+		}
+
+		int Packer::pack(AccessUnit & au)
+		{
+			/* Метод упаковывает все nal unit 
+				которые содержит один access unit 
+				в буфер */
+
+
+			/* Проверка выполнения предусловий.
+			   Если предусловия не выполняется,
+			   то метод завершает свою работу */
+
+				if(!isInit()) return -1;
+				if(!au.isInit()) return -1;
+
+			/* Начало выполнения основного блока метода */
+
+				uint32_t payloadSize = 0;
+				uint8_t *naluPos, nri = 0;
+				uint8_t  temp, fuaIndicator, fuaHeader, stapaHeader = 0;
+				int ret, len, packetNumber, otherSize, n = 0, naluCount = 0;
+
+				if(cur < m_end)
+				{
+					if(mode == UnknowMode)
+					{
+						mode = StapaMode;
+						naluCount = au.getNaluCount();
+					}
+
+					if(mode == FuaMode)
+					{
+						/* Упаковка дефрагментированного nal unit */
+
+						*cur++ = GetFuaIndicator(nu.getHeader());
+						*cur++ = GetFuaHeader(nu.getHeader());
+
+						if(nu.isReset())
+						{
+							*(cur - 1) = H264SetFuaStartBit(1, *(cur - 1));
+						}
+
+						ret = nu.payload(cur, getFree());
+						if(ret < getFree())
+						{
+							*(m_pos + 1) = SetFuaEndBit(1, *(m_pos + 1));
+							 mode = UnknowMode;	
+						}
+
+						cur += ret;
+						len = getLen();
+						cur = m_pos;
+						return len;
+					}
+
+					if(mode == SingleMode)
+					{
+						while(au_cur != au_end) *cur++ = *au_cur++;
+						mode = UnknowMode;
+						len = getBufLen();
+						m_cur = m_pos;
+						return len;
+					}
+
+					if(mode == StapaMode)
+					{
+						/* Агрегированная упаковка acess unit типа STAP-A */
+
+						while(n < naluCount)
+						{
+							// Парсинг очередного nal unit
+
+								au.nextNalUnit(nu);
+
+							// Обработка случая, когда все nal unit уже отпарсены
+
+								if(!nu.isInit()) return 0;
+
+							// Обработка случая, когда nal unit является концом потока
+
+								if(nu.getPayloadType() == 10)
+								{
+									cur++ = nu.getHeader();
+									return 1;				
+								}
+
+							/* Обработка случая, когда размер nal unit
+								либо больше размера самого буфера, либо
+								больше, чем размер свободного места в
+								буфере */
+
+								if(nu.getSize() > getSize() || nu.getSize() > getFree())
+								{
+									mode = nu.getSize() > getSize() ? FuaMode : SingleMode;
+								  *m_pos = SetReferenceIDC(nri, *m_pos);
+									len = getLen();
+									cur = m_pos;
+									return len;
+								}
+
+							// Упаковка очередного nal unit
+
+								payloadSize = nu.getSize();
+								nri = nu.getReferenceIDC() > nri ? nu.getReferenceIDC() : nri;
+								
+								if(cur == m_pos)
+								{
+									/* Если отпарсенный nal unit является самым первым,
+										то в начало буфера добавляется специальный заголовок */
+
+										stapaHeader = GetStapaHeader(nu.getHeader());
+										*cur++ = stapaHeader;
+								}
+
+							// Запись в буфер размера полезной нагрузки nal unit
+
+								*cur++ = (uint8_t)((payloadSize >> 8) & 0x000000FF);
+								*cur++ = (uint8_t)(payloadSize & 0x000000FF);
+
+								ret = nu.payload(cur, getFree());
+								cur += ret;
+								nu.clear();
+						}
+
+						/* Обработка случая, когда все nal unit, которые 
+							содержатся в access unit, помещаются в буфер  */
+
+							*m_pos = SetReferenceIDC(nri, *m_pos);
+							 len = getLen();
+							 cur = m_pos;
+							 mode = UnknowMode;
+							 return len;
+					}
+				}
+		}
+
 		uint8_t GetForbiddenBit(uint8_t header)
 		{	
-			return header >> 7;	
+			/* Получение значения защищённого бита */
+
+				return header >> 7;
 		}
 
 		uint8_t GetReferenceIDC(uint8_t header)
 		{
-			return (header >> 5) & 0x03;
+			/* Получение значения nri */
+
+				return (header >> 5) & 0x03;
 		}
 
 		uint8_t GetPayloadType(uint8_t header)
 		{
-			return header & 0x1F;
+			/* Получение типа полезной нагрузки */
+
+				return header & 0x1F;
 		}
 
 		uint8_t SetForbiddenBit(uint8_t forbiddenBit, uint8_t header)
 		{
-			header = (forbiddenBit << 7) | (header & 0x7F);
+			/* Установка значения защищённого бита */
 
-			return header;
+				header = (forbiddenBit << 7) | (header & 0x7F);
+
+				return header;
 		}
 
 		uint8_t SetReferenceIDC(uint8_t referenceIdc, uint8_t header)
 		{
-			header = ((referenceIdc << 5) & 0x60) | (header & 0x9F);
+			/* Установка значения nri */
 
-			return header;
+				header = ((referenceIdc << 5) & 0x60) | (header & 0x9F);
+
+				return header;
 		}
 
 		uint8_t SetPayloadType(uint8_t payloadType, uint8_t header)
 		{
-			header = (payloadType & 0x1F) | (header & 0xE0);
+			/* Установка типа полезной нагрузки */
 
-			return header;
+				header = (payloadType & 0x1F) | (header & 0xE0);
+
+				return header;
 		}
 
 		uint8_t GetStapaHeader(uint8_t header)

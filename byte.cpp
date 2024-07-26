@@ -128,6 +128,11 @@
 					return m_pos == nullptr || m_end == nullptr ? false : true;
 				}
 
+				bool Array::isReset() const
+				{
+					return cur == m_pos ? true: false;
+				}
+
 
 			/* Реализация методов класса Buffer */
 
