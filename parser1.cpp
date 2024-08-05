@@ -13,8 +13,7 @@ int main(int argc, char *argv[])
 	}
 
 	uint8_t *buf;
-	int ret, i = 0, j = 0;
-	int naluCount = 0, auCount; // Счётчики nal unit и access unit
+	int ret, n = 0;
 
 	H264::NalUnit nu;
 	H264::AccessUnit au;
@@ -23,17 +22,15 @@ int main(int argc, char *argv[])
 	ret = fileLoad(argv[1], (void **) &buf); // Загрузка потока h264 в буфер
 	if(ret < 0) return 1;
 
-	stream.setBuf(buf, ret); // Инициализация буфера с потоком h264
+	stream.setBuf(buf, ret);
 	std::cout << stream.getSize() <<  std::endl;
 
-	auCount = stream.accessUnitCount(); // Получение количества access unit в потоке h264
-
-	while(j < auCount) // Парсинг очередного access unit и вывод информации о нем
+	while(stream.nextAccessUnit(au).isInit())
 	{
-		stream.nextAccessUnit(au);
-		printf("au_number = %d, au_size = %d\n", j, au.getSize());
-		au.clear();
-		j++;
+		// Парсинг очередного access unit и вывод информации о нем
+
+			printf("au_number = %d, au_size = %d\n", n, au.getSize());
+			n++;
 	}
 
 	return 0;

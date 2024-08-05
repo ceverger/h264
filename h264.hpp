@@ -5,6 +5,8 @@
 
 	namespace H264 
 	{
+		/* Пространство имён модуля для работы с видео-потоком H264  */
+
 		class NalUnit;
 		class AccessUnit;
 
@@ -42,7 +44,7 @@
 
 					int nalUnitCount();
 					NalUnit & nextNalUnit(NalUnit & nu);
-					NalUnit & currentNalUnit(NalUnit & nu);			
+					NalUnit & currentNalUnit(NalUnit & nu);
 			
 		}; // class AccessUnit
 
@@ -78,7 +80,7 @@
 
 			/* Другие методы класса */
 
-				int payload(char *buf, int len);
+				int payload(uint8_t *buf, int len);
 				virtual void clear();
 
 				void init();
@@ -86,7 +88,6 @@
 			/* Чекеры класса */
 	
 				virtual bool isInit() const;
-				virtual
 				
 		}; // class NalUnit
 
@@ -116,13 +117,24 @@
 
 				/* Другие методы класса */
 
-					int max() const { return maxSize; }
-					void max(int maxSize) { m_maxsize = maxSize; }
-
 					int pack(AccessUnit & au);
-					int data(void *buf, int bufsize);
 
 		}; // class Packer
+
+		class Unpacker : public Byte::Buffer
+		{
+			public:
+
+				/* Конструкторы и деструкторы класса */
+			
+					Unpacker() : Byte::Buffer() {}
+					virtual ~Unpacker() {}
+
+				/* Другие методы классса */
+
+					int unpack(uint8_t *buf, int bufsize);
+				
+		}; // class Unpacker
 
 
 	/* Внеклассовые функции для работы с заголовком nal unit */
